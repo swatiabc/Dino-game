@@ -4,41 +4,10 @@ import cv2
 from keras.models import load_model
 import numpy as np
 import random
-from keras.layers import Conv2D, MaxPooling2D
-from keras.layers import Dense, Dropout, Flatten
-from keras.models import Sequential
 from sklearn import model_selection, metrics
 from scipy import ndimage
 import pandas as pd
-
-
-def get_best_shift(img):
-    cy, cx = ndimage.measurements.center_of_mass(img)
-
-    rows, cols = img.shape
-    shiftx = np.round(cols / 2.0 - cx).astype(int)
-    shifty = np.round(rows / 2.0 - cy).astype(int)
-
-    return shiftx, shifty
-
-
-def shift(img, sx, sy):
-    rows, cols = img.shape
-    M = np.float32([[1, 0, sx], [0, 1, sy]])
-    shifted = cv2.warpAffine(img, M, (cols, rows))
-    return shifted
-
-
-def shift_according_to_center_of_mass(img):
-    img = cv2.bitwise_not(img)
-
-    # Centralize the image according to center of mass
-    shiftx, shifty = get_best_shift(img)
-    shifted = shift(img, shiftx, shifty)
-    img = shifted
-
-    img = cv2.bitwise_not(img)
-    return img
+import preprocessing
 
 
 batch_size = 64
@@ -47,18 +16,19 @@ epochs = 5
 
 img_rows, img_cols = 224, 224
 PATH = 'test'
-CATEGORIES = ['blank', 'fist', 'palm']
+CATEGORIES = ['fist', 'palm']
 training_data = []
 
 for category in CATEGORIES:
     path = os.path.join(PATH, category)
     class_num = CATEGORIES.index(category)
     for img in os.listdir(path):
-        image_array = cv2.imread(os.path.join(path, img), cv2.IMREAD_GRAYSCALE)
-        resized_array = cv2.resize(image_array, (img_rows, img_cols), interpolation=cv2.INTER_LANCZOS4)
-        _, resized_array = cv2.threshold(resized_array, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        resized_array = shift_according_to_center_of_mass(resized_array)
-        training_data.append([resized_array, class_num])
+        path2 = os.path.join(path, img)
+        orig = cv2.imread(path2)
+        image = preprocessing.pre_process_image(path2)
+        orig, image = preprocessing.find_corners_of_largest_polygon(image, orig)
+        print(image.shape)
+        training_data.append([image, class_num])
 print(len(training_data))
 
 random.shuffle(training_data)
@@ -87,7 +57,7 @@ y = np.array(y)
 print("len x: ", len(X))
 print("len y: ", len(y))
 
-model = load_model("models/model2.hdf5")
+model = load_model("models/model5.hdf5")
 
 test_loss, test_acc = model.evaluate(X, y)
 print("test_acc: ", test_acc, " test_loss: ", test_loss)
@@ -95,8 +65,8 @@ predictions = model.predict(X)
 
 y_pred = np.argmax(predictions, axis=1)
 df = pd.DataFrame(metrics.confusion_matrix(y, y_pred),
-             columns=["Predicted blank","Predicted fist","Predicted palm"],
-             index=["blank", "fist", "palm"])
+             columns=["Predicted fist","Predicted palm"],
+             index=["fist", "palm"])
 print(df)
 
 indices = np.nonzero(y_pred != y)[0]
